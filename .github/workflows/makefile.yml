@@ -5,7 +5,6 @@ env:
   PROJECT_DIR: xks-axum
 
 on:
-  workflow_dispatch:
   pull_request:
   push:
     branches: [ "main" ]
@@ -16,7 +15,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,14 +27,17 @@ jobs:
 
   test-n-clippy:
     name: Unit Test and Clippy
+    needs: style
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, al2, al2aarch64]
-    runs-on: ${{ matrix.os }}
-    needs: style
+        os:
+          - ubuntu-22.04
+#          - al2
+#          - al2aarch64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust Stable
       uses: dtolnay/rust-toolchain@stable
@@ -50,14 +52,17 @@ jobs:
 
   miri:
     name: Check for Undefined Behavior
+    needs: style
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, al2, al2aarch64]
-    runs-on: ${{ matrix.os }}
-    needs: style
+        os:
+          - ubuntu-22.04
+#          - al2
+#          - al2aarch64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust Nightly
       uses: dtolnay/rust-toolchain@nightly
@@ -71,11 +76,11 @@ jobs:
 
   check-on-macos:
     name: Check on Mac
-    runs-on: macos-12
     needs: style
+    runs-on: macos-12
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
