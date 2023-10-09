@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -27,14 +27,17 @@ jobs:
 
   test-n-clippy:
     name: Unit Test and Clippy
+    needs: style
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, al2, al2aarch64]
-    runs-on: ${{ matrix.os }}
-    needs: style
+        os:
+          - ubuntu-22.04
+#          - al2
+#          - al2aarch64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust Stable
       uses: dtolnay/rust-toolchain@stable
@@ -49,14 +52,17 @@ jobs:
 
   miri:
     name: Check for Undefined Behavior
+    needs: style
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, al2, al2aarch64]
-    runs-on: ${{ matrix.os }}
-    needs: style
+        os:
+          - ubuntu-22.04
+#          - al2
+#          - al2aarch64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust Nightly
       uses: dtolnay/rust-toolchain@nightly
@@ -70,119 +76,14 @@ jobs:
 
   check-on-macos:
     name: Check on Mac
-    runs-on: macos-12
     needs: style
+    runs-on: macos-12
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
     - name: Check
       run: cargo check --manifest-path=${{ env.PROJECT_DIR }}/Cargo.toml
-
-  # The pkcs11 crate v0.5.0 doesn't compile on Windows
-  # https://docs.rs/pkcs11/latest/pkcs11/
-  # check-on-windows:
-  #   runs-on: windows-latest
-
-  build:
-    name: Build Packages
-    strategy:
-      matrix:
-        config:
-          - { os: ubuntu-22.04, arch: x86_64 }
-          - { os: al2, arch: x86_64 }
-          - { os: al2aarch64, arch: aarch64 }
-    runs-on: ${{ matrix.config.os }}
-
-    needs: [test-n-clippy, miri, check-on-macos]
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Rust Stable
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Install other dependencies
-      run: |
-        if type apt-get 2>/dev/null; then
-            # Install on Debian/Ubuntu
-            sudo apt-get install -y rpm alien
-        fi
-        if type yum 2>/dev/null; then
-            # Install on Centos/AL2
-            sudo yum install -y rpmdevtools rpm-build rpm-devel rpmlint
-        fi
-
-    - name: Build xks-proxy rpm and deb
-      run: |
-        make
-        rpm_name=$(basename ~/rpmbuild/RPMS/**/*.rpm)
-        echo "RPM_NAME=$rpm_name" >> $GITHUB_ENV
-        if ls *.deb >/dev/null 2>&1; then
-          deb_name=$(ls *.deb)
-          # Include the architecture as part of the file name
-          arch_deb_name=${deb_name/.deb/-${{ matrix.config.arch }}.deb}
-          mv "$deb_name" "$arch_deb_name"
-          echo "DEB_ARTIFACT=$arch_deb_name" >> $GITHUB_ENV
-        else
-          echo "DEB_ARTIFACT=None" >> $GITHUB_ENV
-        fi
-
-    - name: Upload rpm
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.RPM_NAME }}
-        path: ~/rpmbuild/RPMS/**/${{ env.RPM_NAME }}
-
-    - name: Upload deb
-      if: env.DEB_ARTIFACT != 'None'
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.DEB_ARTIFACT }}
-        path: ./*.deb
-
-  build-docker:
-    name: Build Docker Image
-    strategy:
-      matrix:
-        # https://github.com/orgs/community/discussions/25949
-        config:
-          - { os: al2, arch: x86_64 }
-          - { os: al2aarch64, arch: aarch64 }
-    runs-on: ${{ matrix.config.os }}
-    needs: [test-n-clippy, miri, check-on-macos]
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Docker
-      run: |
-        if type yum 2>/dev/null; then
-            # Install on Centos/AL2
-            sudo yum install -y docker
-        fi
-
-    # https://stackoverflow.com/questions/53918841/how-to-install-docker-on-amazon-linux2
-    - name: Start Docker
-      run: |
-        if type yum 2>/dev/null; then
-            sudo service docker start
-            sudo usermod -a -G docker ec2-user
-            sudo chmod 666 /var/run/docker.sock
-            docker version
-        fi
-
-    - name: Build docker image
-      run: |
-        docker build -t xks-proxy:latest .
-        docker save -o xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar xks-proxy:latest
-        xz -z -0 xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar
-
-    - name: Upload docker image
-      uses: actions/upload-artifact@v3
-      with:
-        name: xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar.xz
-        path: ./xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar.xz

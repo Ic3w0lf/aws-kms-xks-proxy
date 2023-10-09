@@ -1,0 +1,105 @@
+name: Release
+
+env:
+  RUST_BACKTRACE: 1
+  PROJECT_DIR: xks-axum
+
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+
+jobs:
+  build:
+    name: Build Packages
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        config:
+          - { os: ubuntu-22.04, arch: x86_64 }
+#          - { os: al2, arch: x86_64 }
+#          - { os: al2aarch64, arch: aarch64 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install RPM/DEB build dependencies
+        run: |
+          if type apt-get 2>/dev/null; then
+              # Install on Debian/Ubuntu
+              sudo apt-get install -y rpm alien
+          fi
+          if type yum 2>/dev/null; then
+              # Install on Centos/AL2
+              sudo yum install -y rpmdevtools rpm-build rpm-devel rpmlint
+          fi
+
+      - name: Build xks-proxy RPM and DEB
+        run: |
+          make
+          rpm_name=$(basename ~/rpmbuild/RPMS/**/*.rpm)
+          echo "RPM_NAME=$rpm_name" >> $GITHUB_ENV
+          if ls *.deb >/dev/null 2>&1; then
+            deb_name=$(ls *.deb)
+            # Include the architecture as part of the file name
+            arch_deb_name=${deb_name/.deb/-${{ matrix.config.arch }}.deb}
+            mv "$deb_name" "$arch_deb_name"
+            echo "DEB_ARTIFACT=$arch_deb_name" >> $GITHUB_ENV
+          else
+            echo "DEB_ARTIFACT=None" >> $GITHUB_ENV
+          fi
+
+      - name: Release
+        uses: softprops/action-gh-release@v0.1.15
+        with:
+          files: |
+            LICENSE
+            NOTICE
+            ~/rpmbuild/RPMS/**/${{ env.RPM_NAME }}
+            ${{ env.DEB_ARTIFACT }}
+
+  build-docker:
+    if: false
+    name: Build Docker Image
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        # https://github.com/orgs/community/discussions/25949
+        config:
+          - { os: ubuntu-22.04, arch: x86_64 }
+#          - { os: al2, arch: x86_64 }
+#          - { os: al2aarch64, arch: aarch64 }
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Docker
+        run: |
+          if type yum 2>/dev/null; then
+              # Install on Centos/AL2
+              sudo yum install -y docker
+          fi
+
+      # https://stackoverflow.com/questions/53918841/how-to-install-docker-on-amazon-linux2
+      - name: Start Docker
+        run: |
+          if type yum 2>/dev/null; then
+              sudo service docker start
+              sudo usermod -a -G docker ec2-user
+              sudo chmod 666 /var/run/docker.sock
+              docker version
+          fi
+
+      - name: Build docker image
+        run: |
+          docker build -t xks-proxy:latest .
+          docker save -o xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar xks-proxy:latest
+          xz -z -0 xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar
+
+      - name: Upload docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar.xz
+          path: ./xks-proxy-docker-v3.1.2-${{ matrix.config.arch }}.tar.xz
