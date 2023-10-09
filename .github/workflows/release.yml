@@ -39,16 +39,15 @@ jobs:
       - name: Build xks-proxy RPM and DEB
         run: |
           make
-          rpm_name=$(basename ~/rpmbuild/RPMS/**/*.rpm)
-          echo "RPM_NAME=$rpm_name" >> $GITHUB_ENV
+
+          # Move any RPM to project dir so its easier to include them in the release
+          mv ~/rpmbuild/RPMS/**/*.rpm .
+
+          # If any DEB files have been build, rename them to include the architecture as part of the file name
           if ls *.deb >/dev/null 2>&1; then
             deb_name=$(ls *.deb)
-            # Include the architecture as part of the file name
             arch_deb_name=${deb_name/.deb/-${{ matrix.config.arch }}.deb}
             mv "$deb_name" "$arch_deb_name"
-            echo "DEB_ARTIFACT=$arch_deb_name" >> $GITHUB_ENV
-          else
-            echo "DEB_ARTIFACT=None" >> $GITHUB_ENV
           fi
 
       - name: Release
@@ -57,8 +56,8 @@ jobs:
           files: |
             LICENSE
             NOTICE
-            ~/rpmbuild/RPMS/**/${{ env.RPM_NAME }}
-            ${{ env.DEB_ARTIFACT }}
+            *.rpm
+            *.deb
 
   build-docker:
     if: false
